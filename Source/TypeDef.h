@@ -3,7 +3,7 @@
 
 #define BASE_CLASSIFIER_SIZE 20
 #define SCALE_INCREASE 1.2f
-#define STAGES_COUNT 1
+#define STAGES_COUNT 22
 #define WINDOW_STEP_SHIFT 3
 
 
