@@ -21,6 +21,6 @@ protected:
 private:
 	Stage *stages;
 	void generateFaceStages();
-	bool searchWindow(IntegralImage* image, HaarRectangle window, float invArea);
+	bool searchWindow(IntegralImage* image, HaarRectangle window, double invArea);
 };
 #endif

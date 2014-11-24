@@ -39,9 +39,9 @@ void ImgIO::ColorToGray( unsigned char *&imgColor, unsigned char *&imgGray )
 	if( imgGray == NULL )
 		imgGray = new unsigned char[ m_sizeX * m_sizeY ];
 
-	const float redWeight   = 0.21f;
-	const float greenWeight = 0.72f;
-	const float blueWeight  = 0.07f;
+	const double redWeight   = 0.21f;
+	const double greenWeight = 0.72f;
+	const double blueWeight  = 0.07f;
 
 	int eltNo = 0;
 	int colorNo = 0;
@@ -63,9 +63,9 @@ void ImgIO::ColorToRed(unsigned char *&imgColor, unsigned char *&imgRed)
 	if (imgRed == NULL)
 		imgRed = new unsigned char[m_sizeX * m_sizeY];
 
-	const float redWeight = 0.21f;
-	const float greenWeight = 0.72f;
-	const float blueWeight = 0.07f;
+	const double redWeight = 0.21f;
+	const double greenWeight = 0.72f;
+	const double blueWeight = 0.07f;
 
 	int eltNo = 0;
 	int colorNo = 0;

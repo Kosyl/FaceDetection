@@ -6,7 +6,7 @@
 
 void HaarAlgorithm::generateFaceStages()
 {
-	stages = new Stage[STAGES_COUNT];
+	stages = new Stage[22];
 	
 
 	stages[0].threshold = 0.822689414024353;
@@ -2246,8 +2246,8 @@ void HaarAlgorithm::generateFaceStages()
 
 std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 {
-	float stopScale = std::min(image->width / (float)BASE_CLASSIFIER_SIZE, image->height / (float)BASE_CLASSIFIER_SIZE);
-	float currentScale = 1.0f;
+	double stopScale = std::min(image->width / (double)BASE_CLASSIFIER_SIZE, image->height / (double)BASE_CLASSIFIER_SIZE);
+	double currentScale = (double)STARTING_CLASSIFIER_SIZE / (double)BASE_CLASSIFIER_SIZE;
 	bool end = false;
 
 	std::vector<HaarRectangle> result;
@@ -2256,7 +2256,7 @@ std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 
 	do
 	{
-		float invArea = 1.0f / (BASE_CLASSIFIER_SIZE * BASE_CLASSIFIER_SIZE * currentScale * currentScale);
+		double invArea = 1.0f / (BASE_CLASSIFIER_SIZE * BASE_CLASSIFIER_SIZE * currentScale * currentScale);
 
 		for (int i = 0; i < STAGES_COUNT; ++i)
 		{
@@ -2298,7 +2298,7 @@ std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 	return result;
 }
 
-bool HaarAlgorithm::searchWindow(IntegralImage* image, HaarRectangle window, float invArea)
+bool HaarAlgorithm::searchWindow(IntegralImage* image, HaarRectangle window, double invArea)
 {
 	double mean = image->getSumInRect(window.left, window.top, window.width, window.height) * invArea;
 	double factor = image->getSum2InRect(window.left, window.top, window.width, window.height) * invArea - (mean * mean);

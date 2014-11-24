@@ -6,7 +6,7 @@
 class HaarRectangle
 {
 public:
-	HaarRectangle(UInt left, UInt top, UInt width, UInt height, float weight) :
+	HaarRectangle(UInt left, UInt top, UInt width, UInt height, double weight) :
 		top(top),
 		left(left),
 		width(width),
@@ -67,9 +67,9 @@ public:
 
 	UInt top, left, width, height, bottom, right;
 
-	float weight, sizeScale, scaledWeight;
+	double weight, sizeScale, scaledWeight;
 
-	void scaleSize(float scale)
+	void scaleSize(double scale)
 	{
 		sizeScale = scale;
 	}

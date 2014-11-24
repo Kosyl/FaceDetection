@@ -18,7 +18,7 @@ void mark(HaarRectangle& rect, unsigned char* imgGrey, UInt stride)
 
 int main()
 {
-	const char* pathIn = "z9.jpg";
+	const char* pathIn = "new.jpg";
 	const char* pathOutGrey = "obrazTestOutGrey.jpg";
 	const char* pathOutColor = "obrazTestOutColor.jpg";
 
