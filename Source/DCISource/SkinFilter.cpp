@@ -1,9 +1,9 @@
-#include "stdafx.h"
+
 #include "SkinFilter.h"
 #include <cmath>
 
-#include <cv.h>
-#include <highgui.h>
+#include "opencv/cv.h"
+#include "opencv/highgui.h"
 
 #define L(x) 105 * log( x + 1 )
 

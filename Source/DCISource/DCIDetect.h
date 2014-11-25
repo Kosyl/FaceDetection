@@ -4,6 +4,8 @@
 
 #include "FaceFilter.h"
 #include "SkinFilter.h"
+#include <vector>
+#include "HaarRectangle.h"
 
 class DCIDetect
 {
@@ -11,7 +13,7 @@ public:
 	 DCIDetect( void );
 	~DCIDetect( void );
 
-	void Run( unsigned char *& img, unsigned char *& imgGrey, const int sizeX, const int sizeY );
+	std::vector<HaarRectangle> Run(unsigned char *& img, unsigned char *& imgGrey, const int sizeX, const int sizeY);
 
 private:
 	
