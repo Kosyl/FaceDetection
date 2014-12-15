@@ -1,9 +1,10 @@
-#include "FaceFilterDevice.cuh"
+#include "FaceFilterDevice.h"
 #include <cmath>
 
 
 __global__ void MaskKernel(unsigned char *img, unsigned char *mask, int sizeX, int sizeY) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
+	
 	if (i < sizeX * sizeY)
 	{
 		if (mask[i] == 0)
@@ -11,79 +12,222 @@ __global__ void MaskKernel(unsigned char *img, unsigned char *mask, int sizeX, i
 	}
 }
 
- __global__ void CloseKernel(unsigned char *img, unsigned char *out, int *elt, int eltSize, int sizeX, int sizeY) {
-	 /* tu zmienilem tylko kawawlek */
-	int i = blockIdx.x * blockDim.x + threadIdx.x;
-	int xPos = i % sizeX;
-	int yPos = (int) i / sizeX;
-	const int eltSize = 7;
+__global__ void ErodeKernel(unsigned char *img, unsigned char *out, int eltSize, int sizeX, int sizeY) {
 
-	int   *structElt;
-	uchar *tempImg;
-	structElt = new int[2 * eltSize * eltSize];
-	tempImg = new uchar[sizeX * sizeY];
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-	CreateStructElt(structElt, eltSize);
-
-	//dilate
- 	if (i < sizeX * sizeY) {
-			if (xPos < eltSize || xPos > sizeX - eltSize || yPos < eltSize || yPos > sizeY - eltSize)
-			{
-				tempImg[i + sizeX * j] = 0;
-			}
-			else
-			{
-				int val = 0;
-
-				for (int k = 0; k < 2 * eltSize * eltSize; k += 2)
-				{
-					val += img[i + structElt[k] + (sizeX * (j + structElt[k + 1]))];
-				}
-
-				if (val)
-					val = 255;
-
-				for (int k = 0; k < 2 * eltSize * eltSize; k += 2)
-				{
-					tempImg[i + structElt[k] + (sizeX * (j + structElt[k + 1]))] = val;
-				}
-			}
-		}
-
-	//erode
-	for (int i = 0; i < sizeX; i++)
+	if(index < sizeX * sizeY)
 	{
-		for (int j = 0; j < sizeY; j++)
-		{
-			uchar val = 0;
+		int xPos = index % sizeX;
+		int yPos = (int) index / sizeX;
+		const int factor = eltSize / 2;
 
-			if (i < eltSize || i > sizeX - eltSize || j < eltSize || j > sizeY - eltSize)
+		if (xPos < eltSize || xPos > sizeX - eltSize || yPos < eltSize || yPos > sizeY - eltSize) 
+		{
+			out[index] = 0;
+		}
+		else
+		{
+			int val = 255;
+
+			for(int i = -factor; i < factor; i++ )
 			{
-				out[i + sizeX * j] = 0;
-			}
-			else
-			{
-				for (int k = 0; k < 2 * eltSize * eltSize; k += 2)
+				for(int j = -factor; j < factor; j++ )
 				{
-					if (tempImg[i + structElt[k] + (sizeX * (j + structElt[k + 1]))] == 0)
+					if( img[xPos + i + (sizeX * (yPos + j) )] == 0) 
 					{
 						val = 0;
-						break;
 					}
-
-					val = 255;
 				}
+			}
 
-				for (int k = 0; k < 2 * eltSize * eltSize; k += 2)
+			for(int i = -factor; i < factor; i++ ) 
+			{
+				for(int j = -factor; j < factor; j++ ) 
 				{
-					out[i + structElt[k] + (sizeX * (j + structElt[k + 1]))] = val;
+					out[xPos + i + (sizeX * (yPos + j) )] = val;
 				}
 			}
 		}
 	}
+}
 
-	delete[] structElt;
-	delete[] tempImg;
+__global__ void DilateKernel(unsigned char *img, unsigned char *out, int eltSize, int sizeX, int sizeY) {
+	
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if(index < sizeX * sizeY)
+	{
+		int xPos = index % sizeX;
+		int yPos = (int) index / sizeX;
+		const int factor = eltSize / 2;
+
+		if (xPos < eltSize || xPos > sizeX - eltSize || yPos < eltSize || yPos > sizeY - eltSize)
+		{
+			
+			out[index] = 0;
+		}
+		else
+		{
+			int val = 0;
+
+			for(int i = -factor; i < factor; i++ )
+			{
+				for(int j = -factor; j < factor; j++ )
+				{
+					val += img[xPos + i + (sizeX * (yPos + j) )];
+				}
+			}
+
+			if (val)
+				val = 255;
+
+			for(int i = -factor; i < factor; i++ )
+			{
+				for(int j = -factor; j < factor; j++ )
+				{
+					out[xPos + i + (sizeX * (yPos + j) )] = val;
+				}
+			}
+		}
+	}
+}
+
+/// wartoœæ musi byæ taka sama, jak liczba w¹tków
+#define TCNT 512
+
+__global__ void FindMaxMinKernel(unsigned char *in, unsigned char *out, int size) {
+
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	int tid = threadIdx.x;
+
+	__shared__ unsigned char temp[512];
+
+	if( index < size)
+	{
+		temp[tid] = in[index];
+
+		__syncthreads();
+
+		for (unsigned int s=blockDim.x/2; s > 0; s>>=1)
+		{
+			if (tid < s) 
+			{
+				if( temp[tid] > temp[tid + s] )
+					temp[tid] = temp[tid];
+				else
+					temp[tid] = temp[tid + s];
+			}
+			__syncthreads();
+		}
+	}
+
+	if (tid == 0)
+	{
+        out[blockIdx.x] = temp[0];
+    }
+}
+
+__global__ void StretchKernel(unsigned char *img, unsigned char *maxVal, int sizeX, int sizeY )
+{
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if(index < sizeX * sizeY)
+	{
+		const unsigned char newVal = (unsigned char)(( (float)img[index] / (float)maxVal[0]) * 255.f);
+
+		if (newVal > 95 && newVal < 240)
+			img[index] = newVal;
+		else
+			img[index] = 0;
+	}
+}
+
+
+
+#if 0
+ __global__ void CloseKernel(unsigned char *img, unsigned char *out, int *elt, int eltSize, int sizeX, int sizeY) {
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if(index < sizeX * sizeY)
+	{
+		int xPos = i % sizeX;
+		int yPos = (int) i / sizeX;
+		const int factor = eltSize / 2;
+		
+		uchar *tempImg;
+		// structElt = new int[2 * eltSize * eltSize];
+		// tempImg = new uchar[sizeX * sizeY];
+
+		// CreateStructElt(structElt, eltSize);
+
+		//dilate
+ 		if (i < sizeX * sizeY) {
+				if (xPos < eltSize || xPos > sizeX - eltSize || yPos < eltSize || yPos > sizeY - eltSize)
+				{
+					tempImg[i] = 0;
+				}
+				else
+				{
+					int val = 0;
+
+					for(int i = -factor; i < factor; i++ )
+					{
+						for(int j = -factor; j < factor; j++ )
+						{
+							val += img[xPos + i + (sizeX * (yPos) )];
+						}
+					}
+
+					if (val)
+						val = 255;
+
+					for(int i = -factor; i < factor; i++ )
+					{
+						for(int j = -factor; j < factor; j++ )
+						{
+							tempImg[xPos + factor + (sizeX * (j + factor)) ] = val;
+						}
+					}
+				}
+
+		//erode
+		
+				unsigned char val = 0;
+
+				if (xPos < eltSize || xPos > sizeX - eltSize || yPos < eltSize || yPos > sizeY - eltSize)
+				{
+					out[i] = 0;
+				}
+				else
+				{
+					unsigned char val = 0;
+					
+					for(int i = -factor; i < factor; i++ )
+					{
+						for(int j = -factor; j < factor; j++ )
+						{
+							if (tempImg[xPos + i + (sizeX * (yPos + j))] == 0)
+							{
+								val = 0;
+								break;
+							}
+						}
+					}
+
+					// val = 255;
+				}
+
+				for(int i = -factor; i < factor; i++ )
+				{
+					for(int j = -factor; j < factor; j++ )
+					{
+						out[xPos + i + (sizeX * (yPos + j))] = val;
+					}
+				}
+			}
+		}
+	}
 }
 __global__ void CreateStructEltKernel(int *elt, int eltSize) {
 	int factor = (eltSize - 1) / 2;
@@ -131,3 +275,4 @@ __device__ void StretchColor(unsigned char *img, int sizeX, int sizeY)
 __global__ std::vector<HaarRectangle> FindFacesKernel(unsigned char *img, unsigned char *out, int sizeX, int sizeY) {
 		
 }
+#endif

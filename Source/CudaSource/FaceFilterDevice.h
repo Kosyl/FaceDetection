@@ -13,11 +13,18 @@ __global__ void GenerateMapKernel( float *medianImg, float *hue, float *saturati
 __device__ float GetMedianDevice( float *img, int scale );
 */
 
+__global__ void DilateKernel(unsigned char *img, unsigned char *out, int eltSize, int sizeX, int sizeY);
+__global__ void ErodeKernel (unsigned char *img, unsigned char *out, int eltSize, int sizeX, int sizeY);
 __global__ void MaskKernel(unsigned char *img, unsigned char *mask, int sizeX, int sizeY);
-__global__ void CloseKernel(unsigned char *img, unsigned char *out, int *elt, int eltSize, int sizeX, int sizeY);
+__global__ void FindMaxMinKernel(unsigned char *in, unsigned char *out, int size);
+__global__ void StretchKernel(unsigned char *img, unsigned char* maxVal, int sizeX, int sizeY);
+
+
+/*
+__global__ void CloseKernel(unsigned char *img, unsigned char *out, int eltSize, int sizeX, int sizeY);
 __global__ void CreateStructEltKernel(int *elt, int eltSize);
 __global__ std::vector<HaarRectangle> FindFacesKernel(unsigned char *img, unsigned char *out, int sizeX, int sizeY);
 
-__device__ void Stretch_Color(unsigned char *img, int sizeX, int sizeY);
+__device__ void Stretch_Color(unsigned char *img, int sizeX, int sizeY);*/
 
 #endif

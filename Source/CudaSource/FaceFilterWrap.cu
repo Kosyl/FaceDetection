@@ -1,37 +1,65 @@
 #include "FaceFilterWrap.h"
-#include "FaceFilterDevice.cuh"
+#include "FaceFilterDevice.h"
 #include "stdio.h"
 
 #define N 512
 
-void MaskDevice(unsigned char *&img, unsigned char *&mask, const int sizeX, const int sizeY)
+void CloseDevice(unsigned char *img, unsigned char *out, int eltSize, int sizeX, int sizeY) {
+	const int blockCnt = ((sizeX * sizeY) / N) + 1;
+
+	unsigned char* tempImg;
+	cudaMalloc(&tempImg, sizeof(unsigned char) * sizeX * sizeY);
+
+	DilateKernel<<<blockCnt, N>>>(img, tempImg, eltSize, sizeX, sizeY);
+	ErodeKernel<<<blockCnt, N>>>(tempImg, out, eltSize, sizeX, sizeY);
+	
+	cudaFree(tempImg);
+
+	printf( "Img Closed\n" );
+}
+
+void MaskDevice(unsigned char *img, unsigned char *mask, const int sizeX, const int sizeY)
 {
 	const int blockCnt = ((sizeX * sizeY) / N) + 1;
 
 	MaskKernel<<< blockCnt, N >>>(img, mask, sizeX, sizeY);
 
-	printf( "Mask\n" );
+	printf( "Mask image\n" );
 }
 
-void CreateStructEltDevice(int *&elt, int eltSize) {
-	const int blockCnt = ((eltSize * eltSize) / N) + 1;
+void StretchDevice(unsigned char *img, int sizeX, int sizeY)
+{
+	int blockCnt = ((sizeX * sizeY) / N) + 1;
+	int size = sizeX * sizeY;
 
-	CreateStructEltKernel<<< blockCnt, N >>>(elt, eltSize);
+	unsigned char* res;
+	unsigned char* input;
 
-	printf( "Mask\n" );
+	cudaMalloc(&res, sizeof(unsigned char) * blockCnt);
+	cudaMalloc(&input, sizeof(unsigned char) * size);
+	cudaMemcpy(input, img, sizeof(unsigned char) * size, cudaMemcpyDeviceToDevice);
+
+	while(size > 0)
+	{
+		// printf( " size: %d blockCnt: %d\n", size, blockCnt );
+		FindMaxMinKernel<<<blockCnt, N>>>(input, res, size);
+		cudaMemcpy(res, input, sizeof(unsigned char) * blockCnt, cudaMemcpyDeviceToDevice);
+		size /= 512;
+		blockCnt = (blockCnt / 512) + 1;
+	}
+
+	StretchKernel<<<blockCnt, N>>>(img, &input[0], sizeX, sizeY);
+
+	printf("Stretch color\n");
+	
+	cudaFree(res);
+	cudaFree(input);
 }
-void CloseDevice(unsigned char *&img, unsigned char *&out, int *&elt, int eltSize, int sizeX, int sizeY) {
-	const int blockCnt = ((sizeX * sizeY) / N) + 1;
 
-	CloseKernel<<< blockCnt, N >>>(img, out, elt, eltSize, sizeX, sizeY);
-
-	printf( "Mask\n" );
-}
-
-std::vector<HaarRectangle> FindFacesDevice(unsigned char *&img, unsigned char *&out, int sizeX, int sizeY) {
+/*std::vector<HaarRectangle> FindFacesDevice(unsigned char *&img, unsigned char *&out, int sizeX, int sizeY) {
 	const int blockCnt = ((sizeX * sizeY) / N) + 1;
 
 	FindFacesKernel<<< blockCnt, N >>>(img, out, sizeX, sizeY);
 
 	printf( "Mask\n" );
-}
+}*/
