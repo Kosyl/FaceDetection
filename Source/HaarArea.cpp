@@ -26,7 +26,7 @@ void HaarArea::setScaleAndWeight(double scale, double weight)
 
 double HaarArea::checkMatch(IntegralImage* image, UInt top, UInt left, double scaleFactor)
 {
-	double sum = 0.0;
+	float sum = 0.0;
 
 	for (int i = 0; i < this->numRectangles; ++i)
 	{

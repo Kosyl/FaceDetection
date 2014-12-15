@@ -13,6 +13,7 @@ typedef LARGE_INTEGER app_timer_t;
 
 #define timer(t_ptr) QueryPerformanceCounter(t_ptr)
 
+//zaznaczenie wyniku na obrazie w skali szarosci
 void mark(HaarRectangle& rect, unsigned char* imgGrey, UInt stride)
 {
 	for (int i = 0; i < rect.height; ++i)
@@ -27,16 +28,23 @@ void mark(HaarRectangle& rect, unsigned char* imgGrey, UInt stride)
 	}
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+	if (argc != 2)
+	{
+		printf("uzycie: %s nazwa_pliku_zdjecia.jpg", argv[0]);
+		return 0;
+	}
+
+	int x = sizeof(HaarArea);
+	x = sizeof(float);
+
 	app_timer_t start, stop;
-	const char* pathIn = "../zdj.jpg";
-	const char* pathOutGrey = "../obrazTestOutGrey.jpg";
-	const char* pathOutColor = "../obrazTestOutColor.jpg";
+	const char* pathIn = argv[1];
+	const char* pathOutGrey = "wynik.jpg";
 
 	unsigned char *imgColor = NULL;
 	unsigned char *imgGrey = NULL;
-	unsigned char *imgRed = NULL;
 	unsigned char *transposed = NULL;
 
 	checkCudaErrors(cudaSetDevice(0));
@@ -45,9 +53,7 @@ int main()
 
 	imgIO.ReadImgColor(pathIn, imgColor);
 
-	imgIO.ColorToRed(imgColor, imgRed);
 	imgIO.ColorToGray(imgColor, imgGrey);
-	//imgIO.Transpose(imgGrey, transposed);
 
 	IntegralImage image(imgIO.getSizeX(), imgIO.getSizeY(), imgGrey);
 	HaarAlgorithm alg;
@@ -59,8 +65,7 @@ int main()
 	double etime;
 	LARGE_INTEGER clk_freq;
 	QueryPerformanceFrequency(&clk_freq);
-	etime = (stop.QuadPart - start.QuadPart) /
-		(double)clk_freq.QuadPart;
+	etime = (stop.QuadPart - start.QuadPart) /(double)clk_freq.QuadPart;
 	printf("time = %.3f ms\n", etime * 1e3);
 
 	for (std::vector<HaarRectangle>::iterator i = result.begin(); i != result.end(); ++i)
@@ -68,14 +73,11 @@ int main()
 		mark(*i, imgGrey, imgIO.getSizeX());
 	}
 
-	imgIO.WriteImgColor(pathOutColor, imgColor);
 	imgIO.WriteImgGrey(pathOutGrey, imgGrey);
 
 	delete[] imgColor;
 	delete[] imgGrey;
-	delete[] imgRed;
 	delete[] transposed;
-
 
 	if (IsDebuggerPresent()) getchar();
 

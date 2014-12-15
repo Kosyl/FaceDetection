@@ -9,9 +9,9 @@ class HaarArea
 {
 private:
 public:
-	double threshold;
-	double valueIfBigger;
-	double valueIfSmaller;
+	float threshold;
+	float valueIfBigger;
+	float valueIfSmaller;
 
 	UInt numRectangles;
 	HaarRectangle rectangles[3];
@@ -19,6 +19,17 @@ public:
 	HaarArea()
 	{
 
+	}
+
+	HaarArea(const HaarArea& rhs) :
+		threshold(rhs.threshold),
+		valueIfBigger(rhs.valueIfBigger),
+		valueIfSmaller(rhs.valueIfSmaller),
+		numRectangles(rhs.numRectangles)
+	{
+		rectangles[0] = rhs.rectangles[0];
+		rectangles[1] = rhs.rectangles[1];
+		rectangles[2] = rhs.rectangles[2];
 	}
 
 	HaarArea(double threshold, double valueIfSmaller, double valueIfBigger, HaarRectangle rectangle1, HaarRectangle rectangle2);

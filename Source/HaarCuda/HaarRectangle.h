@@ -13,7 +13,8 @@ public:
 		height(height),
 		weight(weight),
 		sizeScale(1.0f),
-		scaledWeight(1.0f)
+		scaledWeight(1.0f),
+		valid(true)
 	{
 		right = left + width;
 		bottom = top + height;
@@ -28,7 +29,8 @@ public:
 		sizeScale(1.0f),
 		scaledWeight(1.0f),
 		right(0),
-		bottom(0)
+		bottom(0),
+		valid(false)
 	{
 
 	}
@@ -42,7 +44,8 @@ public:
 		sizeScale(rhs.sizeScale),
 		scaledWeight(rhs.scaledWeight),
 		right(rhs.right),
-		bottom(rhs.bottom)
+		bottom(rhs.bottom),
+		valid(rhs.valid)
 	{
 
 	}
@@ -58,8 +61,10 @@ public:
 		scaledWeight = rhs.scaledWeight;
 		right = rhs.right;
 		bottom = rhs.bottom;
+		valid = rhs.valid;
 		return *this;
 	}
+
 	~HaarRectangle()
 	{
 
@@ -67,7 +72,9 @@ public:
 
 	UInt top, left, width, height, bottom, right;
 
-	double weight, sizeScale, scaledWeight;
+	float weight, sizeScale, scaledWeight;
+
+	bool valid;
 
 	void scaleSize(double scale)
 	{

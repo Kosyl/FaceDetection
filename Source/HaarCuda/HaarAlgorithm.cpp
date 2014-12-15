@@ -13,7 +13,9 @@ void HaarAlgorithm::generateFaceStages()
 {
 	stages = new Stage[22];
 
-
+	// przykladowa faza
+	// threshold - min. suma, wynikow z poszczegolnych HaarArea, ktora stwierdza o obecnosci twarzy
+	
 	stages[0].threshold = 0.822689414024353;
 	stages[0].haarAreas = new HaarArea[3];
 	stages[0].numAreas = 3;
@@ -2251,27 +2253,31 @@ void HaarAlgorithm::generateFaceStages()
 
 std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 {
+	//maks. skala okna
 	double stopScale = std::min(image->width / (double)BASE_CLASSIFIER_SIZE, image->height / (double)BASE_CLASSIFIER_SIZE);
+	//skala pocz¹tkowa, powiêkszana w kolejnych iteracjach
 	double currentScale = (double)STARTING_CLASSIFIER_SIZE / (double)BASE_CLASSIFIER_SIZE;
+
+	//flaga koñca
 	bool end = false;
 
+	//prostok¹ty z twarzami
 	std::vector<HaarRectangle> result;
 
+	//okno przeszukiwañ
 	HaarRectangle window;
 
-	bool* votingArea = new bool[image->height*image->width];
-	float* stageSums = new float[image->height*image->width];
+	//true, jeœli jest twarz; false wpp;
+	bool* votingArea = new bool[image->height*image->width], *votingArea_dev;
 
-	HaarArea* areas_dev;
-
+	//obraz calkowy i obraz calkowy kwadratow
 	UInt* image_dev, *image2_dev;
-	float* stageSums_dev;
+
 	checkCudaErrors(cudaMalloc((void**)&image_dev, image->height*image->width* sizeof(UInt)));
 	checkCudaErrors(cudaMalloc((void**)&image2_dev, image->height*image->width* sizeof(UInt)));
-	checkCudaErrors(cudaMalloc((void**)&stageSums_dev, image->height*image->width* sizeof(float)));
+	checkCudaErrors(cudaMalloc((void**)&votingArea_dev, image->height*image->width* sizeof(bool)));
 
-	checkCudaErrors(cudaMalloc((void**)&areas_dev, (NUM_PHASES_PER_CUDA_RUN)* sizeof(HaarArea)));
-
+	//kopiowanie obrazów do pamiêci karty - 1x na ca³y algorytm
 	checkCudaErrors(cudaMemcpy(image_dev, image->values, image->height*image->width* sizeof(UInt), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(image2_dev, image->values2, image->height*image->width* sizeof(UInt), cudaMemcpyHostToDevice));
 
@@ -2284,6 +2290,7 @@ std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 
 		double invArea = 1.0f / (BASE_CLASSIFIER_SIZE * BASE_CLASSIFIER_SIZE * currentScale * currentScale);
 
+		//skalowanie prostok¹tów
 		for (int i = 0; i < STAGES_COUNT; ++i)
 		{
 			Stage& stage = stages[i];
@@ -2302,6 +2309,8 @@ std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 		int xEnd = image->width - window.width;
 		int yEnd = image->height - window.height;
 
+		//zak³adamy, ¿e we wszystkich po³o¿eniach okna jest twarz
+		// z³e bêd¹ stopniowo odrzucane
 		for (int y = 0; y < yEnd; y += yStep)
 		{
 			for (int x = 0; x < xEnd; x += xStep)
@@ -2310,55 +2319,49 @@ std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 			}
 		}
 
+		//na takiej mapie bêdzie operowa³ GPU
+		checkCudaErrors(cudaMemcpy(votingArea_dev, votingArea, image->height*image->width* sizeof(bool), cudaMemcpyHostToDevice));
+
 		int numPointsToCalcX = xEnd / xStep, numPointsToCalcY = yEnd / yStep;
 
+		//na razie arbitralnie
 		dim3 blockDim(TILE_SIZE, TILE_SIZE), gridDim((numPointsToCalcX + TILE_SIZE - 1) / TILE_SIZE, (numPointsToCalcY + TILE_SIZE - 1) / TILE_SIZE);
 
 		for (int i = 0; i < STAGES_COUNT; ++i)
 		{
-			for (int j = 0; j < image->height*image->width; ++j)
-			{
-				stageSums[j] = 0.0f;
-			}
-			checkCudaErrors(cudaMemcpy(stageSums_dev, stageSums, image->height*image->width* sizeof(float), cudaMemcpyHostToDevice));
-
 			Stage* currentStage = &stages[i];
 			bool stageComplete = false;
 			int completedPhases = 0;
 
 			while (!stageComplete)
 			{
+				// iloœæ ma³ych faz badanych w jednym wywo³aniu kernela
+				// obecnie zawsze wszystkie w du¿ej fazie
+				// w przysz³oœci mo¿e mniej, jeœli inaczej roz³o¿y siê praca w w¹tkach
 				int numPhases = NUM_PHASES_PER_CUDA_RUN < currentStage->numAreas - completedPhases ? NUM_PHASES_PER_CUDA_RUN : currentStage->numAreas - completedPhases;
 
 				HaarArea* area = &(currentStage->haarAreas[completedPhases]);
 
-				checkCudaErrors(cudaMemcpy(areas_dev, area, (numPhases)* sizeof(HaarArea), cudaMemcpyHostToDevice));
-
-				launchHaarKernel(image_dev, image2_dev, stageSums_dev, areas_dev, numPhases, xStep, xEnd, yStep, yEnd, image->stride, window.width, invArea, blockDim, gridDim);
+				//kopiowanie parametrów faz i uruchomienie kernela
+				launchHaarKernel(image_dev, image2_dev, numPhases, xStep, xEnd, yStep, yEnd, image->stride, window.width, invArea, votingArea_dev, currentStage->threshold, area, blockDim, gridDim);
 
 				checkCudaErrors(cudaGetLastError());
 
 				checkCudaErrors(cudaDeviceSynchronize());
+
+				//std::cout << "strefy: " << completedPhases << "/" << currentStage->numAreas << std::endl;
+
 				completedPhases += numPhases;
 
 				stageComplete = completedPhases == currentStage->numAreas;
 
-				//std::cout << "strefy: " << completedPhases << "/" << currentStage->numAreas << std::endl;
 			}
 
 			//std::cout << "faza " << i << " skonczona." << std::endl;
-
-			checkCudaErrors(cudaMemcpy(stageSums, stageSums_dev, image->height*image->width* sizeof(float), cudaMemcpyDeviceToHost));
-
-			for (int y = 0; y < yEnd; y += yStep)
-			{
-				for (int x = 0; x < xEnd; x += xStep)
-				{
-					if (stageSums[y*image->stride + x] < currentStage->threshold)
-						votingArea[y*image->stride + x] = false;
-				}
-			}
 		}
+
+		// œci¹gamy wyniki dla obecnego okna na hosta i tam, gdzie jest twarz, dodajemy do wektora wyników
+		checkCudaErrors(cudaMemcpy(votingArea, votingArea_dev, image->height*image->width* sizeof(bool), cudaMemcpyDeviceToHost));
 
 		for (int y = 0; y < yEnd; y += yStep)
 		{
@@ -2372,14 +2375,12 @@ std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 		}
 
 		currentScale *= SCALE_INCREASE;
-	} while (currentScale <= stopScale);
-
+	}
+	while (currentScale <= stopScale);
 
 	checkCudaErrors(cudaFree(image_dev));
 	checkCudaErrors(cudaFree(image2_dev));
-	checkCudaErrors(cudaFree(stageSums_dev));
-	checkCudaErrors(cudaFree(areas_dev));
-
+	checkCudaErrors(cudaFree(votingArea_dev));
 
 	return result;
 }

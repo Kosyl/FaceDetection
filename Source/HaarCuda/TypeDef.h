@@ -7,8 +7,8 @@
 #define STAGES_COUNT 22
 #define WINDOW_STEP_SHIFT 3
 
-#define NUM_PHASES_PER_CUDA_RUN 200
-#define TILE_SIZE 8
+#define NUM_PHASES_PER_CUDA_RUN 220
+#define TILE_SIZE 16
 
 
 typedef unsigned int UInt;

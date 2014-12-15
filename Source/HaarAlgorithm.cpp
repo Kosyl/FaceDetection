@@ -2300,8 +2300,8 @@ std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 
 bool HaarAlgorithm::searchWindow(IntegralImage* image, HaarRectangle window, double invArea)
 {
-	double mean = image->getSumInRect(window.left, window.top, window.width, window.height) * invArea;
-	double factor = image->getSum2InRect(window.left, window.top, window.width, window.height) * invArea - (mean * mean);
+	float mean = image->getSumInRect(window.left, window.top, window.width, window.height) * invArea;
+	float factor = image->getSum2InRect(window.left, window.top, window.width, window.height) * invArea - (mean * mean);
 
 	factor = (factor >= 0) ? std::sqrt(factor) : 1;
 

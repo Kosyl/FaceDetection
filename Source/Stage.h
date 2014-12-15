@@ -33,13 +33,13 @@ public:
 
 	bool check(IntegralImage* image, UInt top, UInt left, double factor)
 	{
-		double value = 0;
+		float value = 0;
 
 		// For each feature in the feature tree of the current stage,
 		for (UInt i = 0; i < this->numAreas; ++i)
 		{
 			// Evaluate the node's feature
-			double sum = this->haarAreas[i]->checkMatch(image, top, left, factor);
+			float sum = this->haarAreas[i]->checkMatch(image, top, left, factor);
 
 			// And increase the value accumulator
 			if (sum < haarAreas[i]->threshold * factor)
