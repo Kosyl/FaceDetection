@@ -1,8 +1,11 @@
 
 #include "FaceFilter.h"
-#include "assert.h"
+#include "FaceFilterWrap.h"
+#include <assert.h>
 #include <iostream>
 #include <algorithm>
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 typedef unsigned char uchar;
 
@@ -42,6 +45,8 @@ void deleteMatrix(T**& matrix)
 	matrix = nullptr;
 }
 
+/// dilate i erode jest zaimpementowane w wersji GPU, trzeba tylko wyci¹gn¹c je do 
+/// tego miejsca - tzn. napisaæ do nich wrapery
 void erode(bool** mask, int width, int height, int maskSize = 3)
 {
 	int margin = (maskSize - 1) / 2;
@@ -171,6 +176,93 @@ int findAreas(bool** binPic, int** areas, int height, int width)
 	return maxAreaIdx;
 }
 
+std::vector<HaarRectangle> FaceFilter::FindFaces(unsigned char *&img, unsigned char *&out, const int sizeX, const int sizeY)
+{
+	std::vector<HaarRectangle> result;
+	for (int i = 0; i < sizeX * sizeY; i++)
+	{
+		if (!img[i])
+			img[i] = 0;
+		else
+			img[i] = 255;
+	}
+
+	bool** map = getEmptyMatrix<bool>(sizeY, sizeX);
+	bool** holes = getEmptyMatrix<bool>(sizeY, sizeX);
+
+	for (int i = 0; i < sizeX; ++i)
+	{
+		for (int j = 0; j < sizeY; ++j)
+		{
+			map[j][i] = img[j * sizeX + i] != 0;
+		}
+	}
+
+	int** areas = getEmptyMatrix<int>(sizeY, sizeX);
+
+	dilate(map, sizeX, sizeY);
+	dilate(map, sizeX, sizeY);
+	erode(map, sizeX, sizeY);
+	erode(map, sizeX, sizeY);
+
+	for (int i = 0; i < sizeX; ++i)
+	{
+		for (int j = 0; j < sizeY; ++j)
+		{
+			holes[j][i] = img[j * sizeX + i] == 0 && map[j][i];
+		}
+	}
+
+	int numAreas = findAreas(map, areas, sizeY, sizeX);
+
+	erode(holes, sizeX, sizeY);
+
+	for (int i = 0; i < sizeX; ++i)
+	{
+		for (int j = 0; j < sizeY; ++j)
+		{
+			img[j * sizeX + i] = 0;
+		}
+	}
+
+	for (int i = 0; i < sizeX; ++i)
+	{
+		for (int j = 0; j < sizeY; ++j)
+		{
+			if (holes[j][i] != 0)
+			{
+				int etykieta = areas[j][i];
+				HaarRectangle res;
+				res.top = res.left = 0xFFFFFFFF;
+				res.bottom = res.right = 0;
+				for (UInt q = 0; q < sizeX; q++)
+				{
+					for (UInt p = 0; p < sizeY; ++p)
+					{
+						if (areas[p][q] == etykieta)
+						{
+							res.top = std::min(p, res.top);
+							res.left = std::min(q, res.left);
+							res.bottom = std::max(p, res.bottom);
+							res.right = std::max(q, res.right);
+						}
+					}
+				}
+				res.height = res.bottom - res.top;
+				res.width = res.right - res.left;
+				result.push_back(res);
+			}
+		}
+	}
+
+
+	deleteMatrix(map);
+	deleteMatrix(holes);
+	deleteMatrix(areas);
+
+	return result;
+}
+
 std::vector<HaarRectangle> FaceFilter::Filter(unsigned char *&img, unsigned char *&map, const int sizeX, const int sizeY)
 {
 	assert(sizeX);
@@ -180,20 +272,41 @@ std::vector<HaarRectangle> FaceFilter::Filter(unsigned char *&img, unsigned char
 	uchar *stretched;
 	uchar *holes;
 
+	const int stride = sizeX*sizeY;
+	const int eltSize = 7;
 
-	closed = new uchar[sizeX * sizeY];
+	uchar* mapDevice;
+	uchar* imgDevice;
+	uchar* closedDevice;
 
-	Close(map, closed, sizeX, sizeY);
-	Mask(img, closed, sizeX, sizeY);
+	cudaMalloc(&mapDevice, sizeof(uchar) * sizeX * sizeY);
+	cudaMalloc(&imgDevice, sizeof(uchar) * sizeX * sizeY);
+	cudaMalloc(&closedDevice, sizeof(uchar) * sizeX * sizeY);
 
-	StretchColor(img, sizeX, sizeY);
+	cudaMemcpy(mapDevice, map, stride*sizeof(uchar), cudaMemcpyHostToDevice);
+	cudaMemcpy(imgDevice, img, stride*sizeof(uchar), cudaMemcpyHostToDevice);
+
+	CloseDevice(mapDevice, closedDevice, eltSize, sizeX, sizeY);
+
+	MaskDevice(imgDevice, closedDevice, sizeX, sizeY);
+	StretchDevice(imgDevice, sizeX, sizeY);
+	
+	/// do debugowania, te wartoœci s¹ rysowane w DCIDetect.Run()
+	cudaMemcpy(map, imgDevice, sizeof(uchar)*stride, cudaMemcpyDeviceToHost);
+	
+	// do tego miejsca liczy GPU
+	cudaMemcpy(img, imgDevice, sizeof(uchar)*stride, cudaMemcpyDeviceToHost);
 	std::vector<HaarRectangle> result = FindFaces(img, img, sizeX, sizeY);
 
-	delete[] closed;
-
+	cudaFree(mapDevice);
+	cudaFree(imgDevice);
+	cudaFree(closedDevice);
+	
 	return result;
 }
 
+/// to co jest poni¿ej nie jest ju¿ wykorzysytwane w implementacji GPU
+#if 0
 void FaceFilter::Mask(unsigned char *&img, unsigned char *&mask, const int sizeX, const int sizeY)
 {
 	assert(img);
@@ -328,107 +441,6 @@ void FaceFilter::StretchColor(unsigned char *&img, const int sizeX, const int si
 
 }
 
-std::vector<HaarRectangle> FaceFilter::FindFaces(unsigned char *&img, unsigned char *&out, const int sizeX, const int sizeY)
-{
-	std::vector<HaarRectangle> result;
-	for (int i = 0; i < sizeX * sizeY; i++)
-	{
-		if (!img[i])
-			img[i] = 0;
-		else
-			img[i] = 255;
-	}
-
-	bool** map = getEmptyMatrix<bool>(sizeY, sizeX);
-	bool** holes = getEmptyMatrix<bool>(sizeY, sizeX);
-
-	for (int i = 0; i < sizeX; ++i)
-	{
-		for (int j = 0; j < sizeY; ++j)
-		{
-			map[j][i] = img[j * sizeX + i] != 0;
-		}
-	}
-
-	int** areas = getEmptyMatrix<int>(sizeY, sizeX);
-
-	dilate(map, sizeX, sizeY);
-	dilate(map, sizeX, sizeY);
-	erode(map, sizeX, sizeY);
-	erode(map, sizeX, sizeY);
-
-	for (int i = 0; i < sizeX; ++i)
-	{
-		for (int j = 0; j < sizeY; ++j)
-		{
-			holes[j][i] = img[j * sizeX + i] == 0 && map[j][i];
-		}
-	}
-
-	int numAreas = findAreas(map, areas, sizeY, sizeX);
-
-	erode(holes, sizeX, sizeY);
-
-	for (int i = 0; i < sizeX; ++i)
-	{
-		for (int j = 0; j < sizeY; ++j)
-		{
-			img[j * sizeX + i] = 0;
-		}
-	}
-
-	for (int i = 0; i < sizeX; ++i)
-	{
-		for (int j = 0; j < sizeY; ++j)
-		{
-			if (holes[j][i] != 0)
-			{
-				int etykieta = areas[j][i];
-				HaarRectangle res;
-				res.top = res.left = 0xFFFFFFFF;
-				res.bottom = res.right = 0;
-				for (UInt q = 0; q < sizeX; q++)
-				{
-					for (UInt p = 0; p < sizeY; ++p)
-					{
-						if (areas[p][q] == etykieta)
-						{
-							res.top = std::min(p, res.top);
-							res.left = std::min(q, res.left);
-							res.bottom = std::max(p, res.bottom);
-							res.right = std::max(q, res.right);
-						}
-					}
-				}
-				res.height = res.bottom - res.top;
-				res.width = res.right - res.left;
-				result.push_back(res);
-			}
-		}
-	}
-
-
-	deleteMatrix(map);
-	deleteMatrix(holes);
-	deleteMatrix(areas);
-
-	/*uchar* holes = new uchar[sizeX * sizeY];
-
-	for (int i = 0; i < sizeX * sizeY; i++)
-	holes[i] = img[i];
-
-	int i = 0;
-	int j = 0;
-
-	FindHoles(img, holes, 0, 0, sizeX, sizeY);
-
-	for (int i = 0; i < sizeX * sizeY; i++)
-	img[i] = holes[i];
-
-	delete[] holes;*/
-
-	return result;
-}
 
 void FaceFilter::FindHoles(unsigned char *&img, unsigned char *&holes, int x, int y, const int sizeX, const int sizeY)
 {
@@ -452,3 +464,5 @@ void FaceFilter::FindHoles(unsigned char *&img, unsigned char *&holes, int x, in
 		}
 	}
 }
+
+#endif

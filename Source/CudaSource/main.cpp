@@ -20,7 +20,7 @@ void mark(HaarRectangle& rect, unsigned char* imgGrey, UInt stride)
 
 int main()
 {
-	const char* pathIn = "1m.jpg";
+	const char* pathIn = "3m.jpg";
 	const char* pathOutGrey = "obrazTestOutGrey.jpg";
 	const char* pathOutColor = "obrazTestOutColor.jpg";
 
@@ -30,8 +30,6 @@ int main()
 
 	ImgIO imgIO;
 	imgIO.ReadImgColor(pathIn, imgColor);
-
-
 
 	DCIDetect detect;
 

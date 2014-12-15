@@ -1,8 +1,6 @@
 #ifndef _IMGIO_HPP_
 #define _IMGIO_HPP_
 
-#include "cudafun.cuh"
-
 #include <cstdlib>
 #include <stdio.h>
 
