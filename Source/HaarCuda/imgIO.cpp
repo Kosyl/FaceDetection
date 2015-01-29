@@ -50,7 +50,7 @@ void ImgIO::ColorToGray( unsigned char *&imgColor, unsigned char *&imgGray )
 	{
 		for( int j = 0; j < m_sizeX; j++ )
 		{	
-			imgGray[ eltNo ] = redWeight   * imgColor[ colorNo ] + greenWeight * imgColor[ colorNo + 1 ] + blueWeight  * imgColor[ colorNo + 2 ];
+			imgGray[ eltNo ] = static_cast<unsigned char>(redWeight   * imgColor[ colorNo ] + greenWeight * imgColor[ colorNo + 1 ] + blueWeight  * imgColor[ colorNo + 2 ]);
 
 			eltNo++;
 			colorNo += 3;

@@ -36,7 +36,7 @@ public:
 	HaarArea(double threshold, double valueIfSmaller, double valueIfBigger, HaarRectangle rectangle1, HaarRectangle rectangle2, HaarRectangle rectangle3);
 	~HaarArea();
 
-	void setScaleAndWeight(double scale, double weight);
+	void setWeight(double weight);
 	double checkMatch(IntegralImage* image, UInt top, UInt left, double scaleFactor);
 
 

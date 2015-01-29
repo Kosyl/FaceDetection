@@ -11,13 +11,12 @@ public:
 		left(left),
 		width(width),
 		height(height),
-		weight(weight),
-		sizeScale(1.0f),
-		scaledWeight(1.0f),
+		weight(static_cast<float>(weight)),
 		valid(true)
 	{
 		right = left + width;
 		bottom = top + height;
+		area = width * height;
 	}
 
 	HaarRectangle() :
@@ -26,11 +25,10 @@ public:
 		width(0),
 		height(0),
 		weight(0.0f),
-		sizeScale(1.0f),
-		scaledWeight(1.0f),
 		right(0),
 		bottom(0),
-		valid(false)
+		valid(false),
+		area(0)
 	{
 
 	}
@@ -41,11 +39,10 @@ public:
 		width(rhs.width),
 		height(rhs.height),
 		weight(rhs.weight),
-		sizeScale(rhs.sizeScale),
-		scaledWeight(rhs.scaledWeight),
 		right(rhs.right),
 		bottom(rhs.bottom),
-		valid(rhs.valid)
+		valid(rhs.valid),
+		area(rhs.area)
 	{
 
 	}
@@ -57,11 +54,10 @@ public:
 		width = (rhs.width);
 		height = (rhs.height);
 		weight = (rhs.weight);
-		sizeScale = (rhs.sizeScale);
-		scaledWeight = rhs.scaledWeight;
 		right = rhs.right;
 		bottom = rhs.bottom;
 		valid = rhs.valid;
+		area = rhs.area;
 		return *this;
 	}
 
@@ -70,36 +66,11 @@ public:
 
 	}
 
-	UInt top, left, width, height, bottom, right;
+	UInt top, left, width, height, bottom, right, area;
 
-	float weight, sizeScale, scaledWeight;
+	float weight;
 
 	bool valid;
-
-	void scaleSize(double scale)
-	{
-		sizeScale = scale;
-	}
-	UInt scaledX()
-	{
-		return (UInt)(this->left * sizeScale);
-	}
-	UInt scaledY()
-	{
-		return (UInt)(this->top * sizeScale);
-	}
-	UInt scaledWidth()
-	{
-		return (UInt)(this->width * sizeScale);
-	}
-	UInt scaledHeight()
-	{
-		return (UInt)(this->height * sizeScale);
-	}
-	UInt scaledArea()
-	{
-		return (UInt)(scaledWidth() * scaledHeight());
-	}
 };
 
 #endif

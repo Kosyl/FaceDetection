@@ -16,7 +16,7 @@ public:
 	{
 		delete[] this->stages;
 	}
-	std::vector<HaarRectangle> execute(IntegralImage* image);
+	std::vector<HaarRectangle> execute(UInt w, UInt h, unsigned char* data);
 protected:
 private:
 	Stage *stages;

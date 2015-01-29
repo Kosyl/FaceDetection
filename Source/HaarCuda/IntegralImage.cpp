@@ -1,14 +1,74 @@
 #include "IntegralImage.h"
+#include <assert.h>
+#include <iostream>
+#include <algorithm>
 
 
-IntegralImage::IntegralImage(UInt width, UInt height, unsigned char *picture) :
-width(width),
-height(height),
-stride(width + 1)
+IntegralImage::IntegralImage(UInt imWidth, UInt imHeight, unsigned char *picture, float inScale)
 {
-	this->values = new UInt[(width+1)*(height+1)];
-	this->values2 = new UInt[(width+1)*(height+1)];
-	calcFromPicture(picture);
+	scale = inScale;
+	width = static_cast<UInt>(scale > 1.0f ? imWidth / scale : imWidth);
+	height = static_cast<UInt>(scale > 1.0f ? imHeight / scale : imHeight);
+
+	int lastWindowX = width - BASE_CLASSIFIER_SIZE, lastWindowY = height - BASE_CLASSIFIER_SIZE;
+	assert(lastWindowY > 0 && lastWindowX > 0);
+	int windowStep = BASE_CLASSIFIER_SIZE >> WINDOW_STEP_SHIFT;
+	int pixelsPerTile = windowStep * TILE_SIZE;
+
+	numTilesX = (width) / pixelsPerTile + 1;
+	numTilesY = (height) / pixelsPerTile + 1;
+	totalWidth = numTilesX*pixelsPerTile + BASE_CLASSIFIER_SIZE + 2;
+	totalHeight = numTilesY*pixelsPerTile + BASE_CLASSIFIER_SIZE + 2;
+	stride = totalWidth;
+
+	/*this->originalX = new UInt[width*height];
+	this->originalY = new UInt[width*height];
+	memset(originalX, 0, width*height*sizeof(UInt));
+	memset(originalY, 0, width*height*sizeof(UInt));*/
+
+	unsigned char* scaledImg = new unsigned char[width*height];
+
+	for (size_t x = 0; x < width; x++)
+	{
+		for (size_t y = 0; y < height; y++)
+		{
+			int scaledX = static_cast<UInt>(x*scale < imWidth ? x*scale : imWidth);
+			int scaledY = static_cast<UInt>(y*scale < imHeight ? y*scale : imHeight);
+			scaledImg[y*width + x] = picture[scaledY*imWidth + scaledX];
+		}
+	}
+
+	this->values = new UInt[totalWidth*totalHeight];
+	this->values2 = new UInt[totalWidth*totalHeight];
+	memset(values, 0, totalHeight*totalWidth*sizeof(UInt));
+	memset(values2, 0, totalHeight*totalWidth*sizeof(UInt));
+
+	calcFromPicture(scaledImg);
+
+	calcWeights();
+
+	delete[] scaledImg;
+}
+
+void IntegralImage::calcWeights()
+{
+	//todo: mozna sprobowac zrownoleglic
+	weightsStride = totalWeightsWidth = numTilesX*TILE_SIZE;
+	totalWeightsHeight = numTilesY*TILE_SIZE;
+
+	this->weights = new float[totalWeightsWidth*totalWeightsHeight];
+	memset(weights, 0, totalWeightsWidth*totalWeightsHeight*sizeof(float));
+
+	for (size_t x = 0; x < totalWeightsWidth; x++)
+	{
+		for (size_t y = 0; y < totalWeightsHeight; y++)
+		{
+			float mean = getSumInRect(x, y, BASE_CLASSIFIER_SIZE, BASE_CLASSIFIER_SIZE) * INV_AREA;
+			float factor = getSum2InRect(x, y, BASE_CLASSIFIER_SIZE, BASE_CLASSIFIER_SIZE) * INV_AREA - (mean * mean);
+
+			weights[y*weightsStride+x] = (factor >= 0) ? std::sqrt(factor) : 1;
+		}
+	}
 }
 
 IntegralImage::~IntegralImage()
@@ -24,23 +84,23 @@ void IntegralImage::calcFromPicture(unsigned char* picture)
 	values[0] = 0;
 	values2[0] = 0;
 
-	for (int i = 1; i <= width; ++i)
+	for (size_t i = 1; i <= width; ++i)
 	{
 		values[i] = 0;
 		values2[i] = 0;
 	}
-	for (int i = 1; i <= height; ++i)
+	for (size_t i = 1; i <= height; ++i)
 	{
 		values[i*stride] = 0;
 		values2[i*stride] = 0;
 	}
 
-	for (int y = 1; y <= height; ++y)
+	for (size_t y = 1; y <= height; ++y)
 	{
 		int yCurrent = stride * (y);
 		int yBefore = stride * (y - 1);
 
-		for (int x = 1; x <= width; ++x)
+		for (size_t x = 1; x <= width; ++x)
 		{
 			int p1 = *src;
 			int p2 = p1 * p1;

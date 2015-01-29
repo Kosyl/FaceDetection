@@ -15,7 +15,7 @@ void HaarAlgorithm::generateFaceStages()
 
 	// przykladowa faza
 	// threshold - min. suma, wynikow z poszczegolnych HaarArea, ktora stwierdza o obecnosci twarzy
-	
+
 	stages[0].threshold = 0.822689414024353;
 	stages[0].haarAreas = new HaarArea[3];
 	stages[0].numAreas = 3;
@@ -2251,12 +2251,12 @@ void HaarAlgorithm::generateFaceStages()
 
 }
 
-std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
+std::vector<HaarRectangle> HaarAlgorithm::execute(size_t width, size_t height, unsigned char* data)
 {
 	//maks. skala okna
-	double stopScale = std::min(image->width / (double)BASE_CLASSIFIER_SIZE, image->height / (double)BASE_CLASSIFIER_SIZE);
+	float stopScale = std::min(width / (float)BASE_CLASSIFIER_SIZE, height / (float)BASE_CLASSIFIER_SIZE);
 	//skala pocz¹tkowa, powiêkszana w kolejnych iteracjach
-	double currentScale = (double)STARTING_CLASSIFIER_SIZE / (double)BASE_CLASSIFIER_SIZE;
+	float currentScale = 1.0f;
 
 	//flaga koñca
 	bool end = false;
@@ -2264,123 +2264,128 @@ std::vector<HaarRectangle> HaarAlgorithm::execute(IntegralImage* image)
 	//prostok¹ty z twarzami
 	std::vector<HaarRectangle> result;
 
+	UInt areasInStage[STAGES_COUNT];
+	float thresholds[STAGES_COUNT];
+
+	size_t totalAreas = 0;
+	for (size_t i = 0; i < STAGES_COUNT; ++i)
+	{
+		areasInStage[i] = stages[i].numAreas;
+		thresholds[i] = static_cast<float>(stages[i].threshold);
+		totalAreas += stages[i].numAreas;
+	}
+
 	//okno przeszukiwañ
 	HaarRectangle window;
+	window.width = BASE_CLASSIFIER_SIZE;
+	window.height = BASE_CLASSIFIER_SIZE;
+	int step = window.width >> WINDOW_STEP_SHIFT;
 
 	//true, jeœli jest twarz; false wpp;
-	bool* votingArea = new bool[image->height*image->width], *votingArea_dev;
+	bool* votingArea, *votingArea_dev[2];
 
 	//obraz calkowy i obraz calkowy kwadratow
-	UInt* image_dev, *image2_dev;
+	UInt* image_dev[2];
+	float* weights_dev[2];
 
-	checkCudaErrors(cudaMalloc((void**)&image_dev, image->height*image->width* sizeof(UInt)));
-	checkCudaErrors(cudaMalloc((void**)&image2_dev, image->height*image->width* sizeof(UInt)));
-	checkCudaErrors(cudaMalloc((void**)&votingArea_dev, image->height*image->width* sizeof(bool)));
+	//strefy Haara
+	HaarArea* allAreas_dev;
 
-	//kopiowanie obrazów do pamiêci karty - 1x na ca³y algorytm
-	checkCudaErrors(cudaMemcpy(image_dev, image->values, image->height*image->width* sizeof(UInt), cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(image2_dev, image->values2, image->height*image->width* sizeof(UInt), cudaMemcpyHostToDevice));
+	//skalowanie wag prostok¹tów
+	for (int i = 0; i < STAGES_COUNT; ++i)
+	{
+		Stage& stage = stages[i];
+		for (UInt j = 0; j < stage.numAreas; ++j)
+		{
+			stage.haarAreas[j].setWeight(INV_AREA);
+		}
+	}
+
+	//Zarezerwowanie pamiêci dla najwiêkszego rozmiaru obrazu (skala 1)
+	IntegralImage* image = new IntegralImage(width, height, data, currentScale);
+
+	votingArea = new bool[image->totalWeightsHeight*image->totalWeightsWidth];
+
+	checkCudaErrors(cudaMalloc((void**)&image_dev[0], image->totalHeight*image->totalWidth* sizeof(UInt)));
+	checkCudaErrors(cudaMalloc((void**)&image_dev[1], image->totalHeight*image->totalWidth* sizeof(UInt)));
+	checkCudaErrors(cudaMalloc((void**)&weights_dev[0], image->totalWeightsHeight*image->totalWeightsWidth* sizeof(float)));
+	checkCudaErrors(cudaMalloc((void**)&weights_dev[1], image->totalWeightsHeight*image->totalWeightsWidth* sizeof(float)));
+	checkCudaErrors(cudaMalloc((void**)&votingArea_dev[0], image->totalWeightsHeight*image->totalWeightsWidth* sizeof(bool)));
+	checkCudaErrors(cudaMalloc((void**)&votingArea_dev[1], image->totalWeightsHeight*image->totalWeightsWidth* sizeof(bool)));
+	checkCudaErrors(cudaMalloc((void**)&allAreas_dev, totalAreas* sizeof(HaarArea)));
+
+	int currentBuffer = 0;
+
+	//skopiowanie stref do pamiêci globalnej
+	int areasOffset = 0;
+	for (size_t i = 0; i < STAGES_COUNT; ++i)
+	{
+		checkCudaErrors(cudaMemcpy(allAreas_dev + areasOffset, &(stages[i].haarAreas[0]), areasInStage[i] * sizeof(HaarArea), cudaMemcpyHostToDevice));
+		areasOffset += areasInStage[i];
+	}
 
 	do
 	{
-		for (int i = 0; i < image->height*image->width; ++i)
+		checkCudaErrors(cudaMemcpy(image_dev[currentBuffer], image->values, image->totalHeight*image->totalWidth* sizeof(UInt), cudaMemcpyHostToDevice));
+		checkCudaErrors(cudaMemcpy(weights_dev[currentBuffer], image->weights, image->totalWeightsHeight*image->totalWeightsWidth* sizeof(float), cudaMemcpyHostToDevice));
+
+		for (size_t i = 0; i < image->totalWeightsHeight*image->totalWeightsWidth; ++i)
 		{
-			votingArea[i] = false;
-		}
-
-		double invArea = 1.0f / (BASE_CLASSIFIER_SIZE * BASE_CLASSIFIER_SIZE * currentScale * currentScale);
-
-		//skalowanie prostok¹tów
-		for (int i = 0; i < STAGES_COUNT; ++i)
-		{
-			Stage& stage = stages[i];
-			for (UInt j = 0; j < stage.numAreas; ++j)
-			{
-				stage.haarAreas[j].setScaleAndWeight(currentScale, invArea);
-			}
-		}
-
-		window.width = (int)(BASE_CLASSIFIER_SIZE * currentScale);
-		window.height = (int)(BASE_CLASSIFIER_SIZE * currentScale);
-
-		int xStep = window.width >> WINDOW_STEP_SHIFT;
-		int yStep = window.height >> WINDOW_STEP_SHIFT;
-
-		int xEnd = image->width - window.width;
-		int yEnd = image->height - window.height;
-
-		//zak³adamy, ¿e we wszystkich po³o¿eniach okna jest twarz
-		// z³e bêd¹ stopniowo odrzucane
-		for (int y = 0; y < yEnd; y += yStep)
-		{
-			for (int x = 0; x < xEnd; x += xStep)
-			{
-				votingArea[y*image->stride + x] = true;
-			}
+			votingArea[i] = true;
 		}
 
 		//na takiej mapie bêdzie operowa³ GPU
-		checkCudaErrors(cudaMemcpy(votingArea_dev, votingArea, image->height*image->width* sizeof(bool), cudaMemcpyHostToDevice));
+		checkCudaErrors(cudaMemcpy(votingArea_dev[currentBuffer], votingArea, image->totalWeightsHeight*image->totalWeightsWidth* sizeof(bool), cudaMemcpyHostToDevice));
 
-		int numPointsToCalcX = xEnd / xStep, numPointsToCalcY = yEnd / yStep;
+		dim3 blockDim(TILE_SIZE, TILE_SIZE), gridDim(image->numTilesX, image->numTilesY);
 
-		//na razie arbitralnie
-		dim3 blockDim(TILE_SIZE, TILE_SIZE), gridDim((numPointsToCalcX + TILE_SIZE - 1) / TILE_SIZE, (numPointsToCalcY + TILE_SIZE - 1) / TILE_SIZE);
+		//kopiowanie parametrów faz i uruchomienie kernela
+		launchHaarKernel(image_dev[currentBuffer], weights_dev[currentBuffer], votingArea_dev[currentBuffer], image->stride, image->weightsStride, allAreas_dev, areasInStage, thresholds, blockDim, gridDim);
 
-		for (int i = 0; i < STAGES_COUNT; ++i)
-		{
-			Stage* currentStage = &stages[i];
-			bool stageComplete = false;
-			int completedPhases = 0;
+		checkCudaErrors(cudaGetLastError());
 
-			while (!stageComplete)
-			{
-				// iloœæ ma³ych faz badanych w jednym wywo³aniu kernela
-				// obecnie zawsze wszystkie w du¿ej fazie
-				// w przysz³oœci mo¿e mniej, jeœli inaczej roz³o¿y siê praca w w¹tkach
-				int numPhases = NUM_PHASES_PER_CUDA_RUN < currentStage->numAreas - completedPhases ? NUM_PHASES_PER_CUDA_RUN : currentStage->numAreas - completedPhases;
+		float newScale = currentScale*SCALE_INCREASE;
+		IntegralImage* newImage = nullptr;
+		if (newScale <= stopScale)
+			newImage = new IntegralImage(width, height, data, newScale);
 
-				HaarArea* area = &(currentStage->haarAreas[completedPhases]);
-
-				//kopiowanie parametrów faz i uruchomienie kernela
-				launchHaarKernel(image_dev, image2_dev, numPhases, xStep, xEnd, yStep, yEnd, image->stride, window.width, invArea, votingArea_dev, currentStage->threshold, area, blockDim, gridDim);
-
-				checkCudaErrors(cudaGetLastError());
-
-				checkCudaErrors(cudaDeviceSynchronize());
-
-				//std::cout << "strefy: " << completedPhases << "/" << currentStage->numAreas << std::endl;
-
-				completedPhases += numPhases;
-
-				stageComplete = completedPhases == currentStage->numAreas;
-
-			}
-
-			//std::cout << "faza " << i << " skonczona." << std::endl;
-		}
+		checkCudaErrors(cudaDeviceSynchronize());
 
 		// œci¹gamy wyniki dla obecnego okna na hosta i tam, gdzie jest twarz, dodajemy do wektora wyników
-		checkCudaErrors(cudaMemcpy(votingArea, votingArea_dev, image->height*image->width* sizeof(bool), cudaMemcpyDeviceToHost));
+		checkCudaErrors(cudaMemcpy(votingArea, votingArea_dev[currentBuffer], image->totalWeightsHeight*image->totalWeightsWidth* sizeof(bool), cudaMemcpyDeviceToHost));
 
-		for (int y = 0; y < yEnd; y += yStep)
+		size_t unscaledX = 0, unscaledY = 0, pixelX = 0, pixelY = 0;
+		for (size_t windowY = 0; windowY < image->totalWeightsHeight; windowY += 1, pixelY += step)
 		{
-			for (int x = 0; x < xEnd; x += xStep)
+			if (pixelY + window.height > image->height)
+				break;
+			pixelX = 0;
+			for (size_t windowX = 0; windowX < image->totalWeightsWidth; windowX += 1, pixelX += step)
 			{
-				if (votingArea[y*image->stride + x])
+				if (pixelX + window.width > image->width)
+					break;
+				if (votingArea[windowY*image->weightsStride + windowX])
 				{
-					result.push_back(HaarRectangle(x, y, window.width, window.height, 0));
+					result.push_back(HaarRectangle(static_cast<UInt>(windowX*WINDOW_STEP_IN_PIX*image->scale), static_cast<UInt>(windowY*WINDOW_STEP_IN_PIX*image->scale), static_cast<UInt>(window.width*image->scale), static_cast<UInt>(window.height*image->scale), 0.0f));
 				}
 			}
 		}
 
-		currentScale *= SCALE_INCREASE;
-	}
-	while (currentScale <= stopScale);
+		currentScale = newScale;
+		delete image;
+		image = newImage;
+		newImage = nullptr;
+	} while (currentScale <= stopScale);
 
-	checkCudaErrors(cudaFree(image_dev));
-	checkCudaErrors(cudaFree(image2_dev));
-	checkCudaErrors(cudaFree(votingArea_dev));
+	checkCudaErrors(cudaFree(image_dev[0]));
+	checkCudaErrors(cudaFree(image_dev[1]));
+	checkCudaErrors(cudaFree(votingArea_dev[0]));
+	checkCudaErrors(cudaFree(votingArea_dev[1]));
+	checkCudaErrors(cudaFree(weights_dev[0]));
+	checkCudaErrors(cudaFree(weights_dev[1]));
+	checkCudaErrors(cudaFree(allAreas_dev));
+
+	checkCudaErrors(cudaDeviceReset());
 
 	return result;
 }
