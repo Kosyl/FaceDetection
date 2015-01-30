@@ -6,8 +6,8 @@
 #include <iostream>
 #include <wx/wxprec.h>
 #include "helper_timer.h"
-#include "HaarAlgorithm.h"
-#include "IntegralImage.h"
+/*#include "HaarAlgorithm.h"
+#include "IntegralImage.h"*/
 #ifndef WX_PRECOMP
     #include <wx/wx.h>
 #endif
@@ -25,7 +25,7 @@ void mark2(HaarRectangle2& rect, unsigned char* imgGrey, UInt stride)
 	}
 }
 
-
+/*
 void mark(HaarRectangle& rect, unsigned char* imgGrey, UInt stride)
 {
 	for (UInt i = 0; i < rect.height; ++i)
@@ -40,7 +40,7 @@ void mark(HaarRectangle& rect, unsigned char* imgGrey, UInt stride)
 	}
 }
 
-
+*/
 class MyApp: public wxApp
 {
 public:
@@ -150,6 +150,8 @@ void MyFrame::OnButtonClick(wxCommandEvent& event) {
 	imgIO.ReadImgColor((const char*)pathIn, imgColor);
 	imgIO.ColorToGray(imgColor, imgGrey);
 	imgIO.ColorToGray(imgColor, imgClean);
+	//imgClean = imgColor;
+	unsigned char *imgColor2 = imgColor;
 
 		 int imgSizeX = imgIO.getSizeX();
 	 int imgSizeY = imgIO.getSizeY();
@@ -158,11 +160,14 @@ void MyFrame::OnButtonClick(wxCommandEvent& event) {
 
 	for (std::vector<HaarRectangle2>::iterator i = result.begin(); i != result.end(); ++i)
 	{
-		mark2(*i, imgClean, imgIO.getSizeX());
+		mark2(*i, imgColor2, imgIO.getSizeX());
+				mark2(*i, imgClean, imgIO.getSizeX());
+
 	}
 		const char* pathGrey = "obrazTestOutGrey.jpg";
-
-	imgIO.WriteImgGrey(pathGrey, imgClean);
+	imgIO.WriteImgColor(pathGrey, imgColor2);
+	const char* pathGrey2 = "obrazTestOutGrey2.jpg";
+	imgIO.WriteImgGrey(pathGrey2, imgClean);
 		wxString photo_file;
 	wxClientDC dc(pane);
 	photo_file = pathGrey;
@@ -180,7 +185,8 @@ void MyFrame::OnButtonClick(wxCommandEvent& event) {
 		dc.DrawBitmap(photo, (GetClientSize().GetX() - photo.GetWidth()) / 2, 10, false);
 
 	SetStatusText("Zakończono operację.");
-	} else { ImgIO imgIO;
+	} /*else {
+		ImgIO imgIO;
 	imgIO.ReadImgColor((const char*)pathIn, imgColor);
 	imgIO.ColorToGray(imgColor, imgGrey);
 	imgIO.ColorToGray(imgColor, imgClean);
@@ -215,7 +221,7 @@ void MyFrame::OnButtonClick(wxCommandEvent& event) {
 		dc.DrawBitmap(photo, (GetClientSize().GetX() - photo.GetWidth()) / 2, 10, false);
 
 	SetStatusText("Zakończono operację.");
-}
+}*/
 
 	}
 	}
